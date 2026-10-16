@@ -1,16 +1,18 @@
 import os
+import asyncio
 import requests
 from datetime import datetime, timedelta
+import discord
 
-# 1. 讀取隱私環境變數
-DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
+# 1. 讀取 GitHub Secrets 環境變數
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 
-def get_multi_airline_prices():
-    origin = "TPE"         # 出發地：台北
-    destination = "TYO"    # 目的地：東京 (含羽田/成田)
+def fetch_flight_data():
+    origin = "TPE"
+    destination = "TYO"
 
-    # 🗓️ 動態日期設定：自動推遲至 60 天後出發，玩 5 天
     today = datetime.now()
     DAYS_UNTIL_DEPART = 60
     TRIP_DURATION = 5
@@ -21,7 +23,6 @@ def get_multi_airline_prices():
     outbound_date = outbound_dt.strftime("%Y-%m-%d")
     return_date = return_dt.strftime("%Y-%m-%d")
 
-    # 2. 呼叫 Google Flights API (SerpApi)
     url = "https://serpapi.com/search.json"
     params = {
         "engine": "google_flights",
@@ -40,10 +41,8 @@ def get_multi_airline_prices():
         
         all_flights = data.get("best_flights", []) + data.get("other_flights", [])
         if not all_flights:
-            print(f"未找到 {outbound_date} 至 {return_date} 的航班")
-            return
+            return None
 
-        # 3. 整理每家航空公司的最低價格
         airline_best_prices = {}
         for flight in all_flights:
             price = flight.get("price")
@@ -53,7 +52,6 @@ def get_multi_airline_prices():
             if airline_name not in airline_best_prices or price < airline_best_prices[airline_name]:
                 airline_best_prices[airline_name] = price
 
-        # 4. 組成 Discord 卡片訊息
         msg = f"✈️ **【機票動態比價】{origin} ➡️ {destination} 各家航空價格**\n"
         msg += f"📅 監控日期：`{outbound_date}` ～ `{return_date}` (往後推 60 天)\n"
         msg += "-----------------------------------\n"
@@ -65,18 +63,32 @@ def get_multi_airline_prices():
         msg += "-----------------------------------\n"
         msg += f"💡 *資料來源：Google Flights*"
 
-        print(msg)
-        send_discord_notification(msg)
-
+        return msg
     except Exception as e:
-        print(f"抓取機票失敗: {e}")
+        print(f"抓取失敗: {e}")
+        return None
 
-def send_discord_notification(message):
-    if not DISCORD_WEBHOOK:
-        print("❌ 未設定 DISCORD_WEBHOOK！")
-        return
-    payload = {"content": message}
-    requests.post(DISCORD_WEBHOOK, json=payload)
+# --- Discord Bot 發送邏輯 ---
+async def send_via_bot(message_text):
+    intents = discord.Intents.default()
+    client = discord.Client(intents=intents)
+
+    @client.event
+    async def on_ready():
+        print(f"🤖 Bot 已登入：{client.user.name}")
+        channel = client.get_channel(int(CHANNEL_ID))
+        if channel:
+            await channel.send(message_text)
+            print("✅ 訊息已透過 Bot 成功發送！")
+        else:
+            print("❌ 找不到指定頻道，請確認 CHANNEL_ID 是否正確以及 Bot 是否已被邀請進伺服器。")
+        await client.close()  # 發送完成後自動斷開連線，結束 GitHub Action Task
+
+    await client.start(DISCORD_TOKEN)
 
 if __name__ == "__main__":
-    get_multi_airline_prices()
+    flight_msg = fetch_flight_data()
+    if flight_msg and DISCORD_TOKEN and CHANNEL_ID:
+        asyncio.run(send_via_bot(flight_msg))
+    else:
+        print("未抓取到資料或 Secrets 設定缺失。")
