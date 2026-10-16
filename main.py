@@ -41,19 +41,40 @@ def fetch_flight_data():
         response = requests.get(url, params=params)
         data = response.json()
         
-        all_flights = data.get("best_flights", []) + data.get("other_flights", [])
+        # 檢查 SerpApi 是否有回傳錯誤訊息 (例如 API Key 錯誤或額度用完)
+        if "error" in data:
+            print(f"❌ SerpApi 報錯: {data['error']}")
+            return None
+
+        # 嘗試從所有可能的位置撈取航班列表
+        all_flights = []
+        if "best_flights" in data:
+            all_flights.extend(data["best_flights"])
+        if "other_flights" in data:
+            all_flights.extend(data["other_flights"])
+
         if not all_flights:
-            print("⚠️ API 回傳成功，但未找到符合條件的航班數值。")
+            print("⚠️ API 回傳成功，但 JSON 中找不到 best_flights 或 other_flights！")
+            print("🔍 伺服器回傳 Key 包含：", list(data.keys()))
             return None
 
         airline_best_prices = {}
         for flight in all_flights:
             price = flight.get("price")
-            flight_info = flight.get("flights", [])[0]
-            airline_name = flight_info.get("airline", "未知航空")
+            flights_list = flight.get("flights", [])
             
-            if airline_name not in airline_best_prices or price < airline_best_prices[airline_name]:
-                airline_best_prices[airline_name] = price
+            if flights_list:
+                airline_name = flights_list[0].get("airline", "未知航空")
+            else:
+                airline_name = "未知航空"
+            
+            if price:
+                if airline_name not in airline_best_prices or price < airline_best_prices[airline_name]:
+                    airline_best_prices[airline_name] = price
+
+        if not airline_best_prices:
+            print("⚠️ 有找到航班資料，但無法提取出價格與航空公司。")
+            return None
 
         msg = f"✈️ **【機票動態比價】{origin} ➡️ {destination} 各家航空價格**\n"
         msg += f"📅 監控日期：`{outbound_date}` ～ `{return_date}` (往後推 60 天)\n"
@@ -68,7 +89,7 @@ def fetch_flight_data():
 
         return msg
     except Exception as e:
-        print(f"❌ SerpApi 抓取失敗: {e}")
+        print(f"❌ 解析機票數據時發生例外錯誤: {e}")
         return None
 
 # --- Discord Bot 發送邏輯 ---
