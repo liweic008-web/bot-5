@@ -12,8 +12,9 @@ SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 TARGET_CHANNEL_ID = 1560638536800014407 
 
 def fetch_flight_data():
-    origin = "TPE"
-    destination = "TYO"
+    # 使用具體的機場與城市代碼
+    origin = "TPE"         # 台北桃園 (TPE)
+    destination = "TYO"    # 東京全機場 (TYO)
 
     today = datetime.now()
     DAYS_UNTIL_DEPART = 60
@@ -32,6 +33,7 @@ def fetch_flight_data():
         "arrival_id": destination,
         "outbound_date": outbound_date,
         "return_date": return_date,
+        "type": "1",           # 1 代表來回票 (Round trip)，2 代表單程
         "currency": "TWD",
         "hl": "zh-TW",
         "api_key": SERPAPI_KEY
@@ -41,12 +43,20 @@ def fetch_flight_data():
         response = requests.get(url, params=params)
         data = response.json()
         
-        # 檢查 SerpApi 是否有回傳錯誤訊息 (例如 API Key 錯誤或額度用完)
+        # 如果 SerpApi 報錯
         if "error" in data:
             print(f"❌ SerpApi 報錯: {data['error']}")
-            return None
+            
+            # 💡 備用方案：如果 TYO 查不到，改用 NRT (成田機場) 試試
+            print("🔄 嘗試切換目的地為 NRT (成田機場) 重新查詢...")
+            params["arrival_id"] = "NRT"
+            response = requests.get(url, params=params)
+            data = response.json()
+            if "error" in data:
+                print(f"❌ 備用查詢依然報錯: {data['error']}")
+                return None
 
-        # 嘗試從所有可能的位置撈取航班列表
+        # 彙整航班資料
         all_flights = []
         if "best_flights" in data:
             all_flights.extend(data["best_flights"])
@@ -54,10 +64,42 @@ def fetch_flight_data():
             all_flights.extend(data["other_flights"])
 
         if not all_flights:
-            print("⚠️ API 回傳成功，但 JSON 中找不到 best_flights 或 other_flights！")
-            print("🔍 伺服器回傳 Key 包含：", list(data.keys()))
+            print("⚠️ 未找到任何航班列表。")
             return None
 
+        airline_best_prices = {}
+        for flight in all_flights:
+            price = flight.get("price")
+            flights_list = flight.get("flights", [])
+            
+            if flights_list:
+                airline_name = flights_list[0].get("airline", "未知航空")
+            else:
+                airline_name = "未知航空"
+            
+            if price:
+                if airline_name not in airline_best_prices or price < airline_best_prices[airline_name]:
+                    airline_best_prices[airline_name] = price
+
+        if not airline_best_prices:
+            print("⚠️ 未能提取出價格。")
+            return None
+
+        msg = f"✈️ **【機票動態比價】{origin} ➡️ {destination} 各家航空價格**\n"
+        msg += f"📅 監控日期：`{outbound_date}` ～ `{return_date}` (往後推 60 天)\n"
+        msg += "-----------------------------------\n"
+
+        sorted_prices = sorted(airline_best_prices.items(), key=lambda x: x[1])
+        for airline, price in sorted_prices:
+            msg += f"🔹 **{airline}**：NT$ **{price:,}**\n"
+
+        msg += "-----------------------------------\n"
+        msg += f"💡 *資料來源：Google Flights*"
+
+        return msg
+    except Exception as e:
+        print(f"❌ 解析機票數據時發生例外錯誤: {e}")
+        return None
         airline_best_prices = {}
         for flight in all_flights:
             price = flight.get("price")
