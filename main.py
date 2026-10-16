@@ -85,8 +85,8 @@ def fetch_flight_data():
             print("⚠️ 未能提取出價格。")
             return None
 
-        msg = f"✈️ **【機票動態比價】{origin} ➡️ {destination} 各家航空價格**\n"
-        msg += f"📅 監控日期：`{outbound_date}` ～ `{return_date}` (往後推 60 天)\n"
+        msg = f"✈️ **【機票動態比價】{origin} >>>{destination} 各家航空價格**\n"
+        msg += f"監控日期：`{outbound_date}` ～ `{return_date}`\n"
         msg += "-----------------------------------\n"
 
         sorted_prices = sorted(airline_best_prices.items(), key=lambda x: x[1])
@@ -94,7 +94,7 @@ def fetch_flight_data():
             msg += f"🔹 **{airline}**：NT$ **{price:,}**\n"
 
         msg += "-----------------------------------\n"
-        msg += f"💡 *資料來源：Google Flights*"
+        msg += f"*資料來源：Google Flights*"
 
         return msg
     except Exception as e:
