@@ -2,7 +2,7 @@ name: Daily Flight Price Checker
 
 on:
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '13 16 * * *'
   workflow_dispatch:
 
 jobs:
