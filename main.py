@@ -6,7 +6,7 @@ import discord
 
 # 1. 讀取 GitHub Secrets 環境變數
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-CHANNEL_ID = 1560638536800014407
+CHANNEL_ID =1560638536800014407
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 
 def fetch_flight_data():
